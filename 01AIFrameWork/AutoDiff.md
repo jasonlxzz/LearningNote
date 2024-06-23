@@ -12,7 +12,7 @@ Code Transformation in Python](https://arxiv.org/pdf/1711.02712)
 
 求导法则1：两个函数相加的导数
 
-\frac{d}{dx}(f(x)+g(x))-> \frac{d}{dx}f(x) + \frac{d}{dx}g(x)
+$\frac{d}{dx}(f(x)+g(x))-> \frac{d}{dx}f(x) + \frac{d}{dx}g(x)$
 
 求导法则2：两个函数相乘的导数
 
