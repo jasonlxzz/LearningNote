@@ -82,4 +82,4 @@ $\frac{d}{dx}(f(x)*g(x))-> (\frac{d}{dx}f(x))g(x) + (\frac{d}{dx}g(x))f(x)$
 
 [pytorch官方case](https://colab.research.google.com/drive/1VpeE6UvEPRz9HmsHh1KS0XxXjYu533EC)
 
-[ascend教程case]([AISystem/05Framework/02AutoDiff/06ReversedMode.ipynb at main · chenzomi12/AISystem · GitHub](https://github.com/chenzomi12/AISystem/blob/main/05Framework/02AutoDiff/06ReversedMode.ipynb))
+[ascend教程case]([AISystem/05Framework/02AutoDiff/06ReversedMode.ipynb at main · chenzomi12/AISystem · GitHub](https://github.com/chenzomi12/AISystem/blob/main/05Framework/02AutoDiff/06ReversedMode.ipynb)
