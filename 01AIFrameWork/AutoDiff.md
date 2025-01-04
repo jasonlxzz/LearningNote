@@ -83,3 +83,11 @@ $\frac{d}{dx}(f(x)*g(x))-> (\frac{d}{dx}f(x))g(x) + (\frac{d}{dx}g(x))f(x)$
 [pytorch官方case](https://colab.research.google.com/drive/1VpeE6UvEPRz9HmsHh1KS0XxXjYu533EC)
 
 [ascend教程case](https://github.com/chenzomi12/AISystem/blob/main/05Framework/02AutoDiff/06ReversedMode.ipynb)
+
+## pytorch 实现原理
+
+1）反向函数是如何初始化的，
+
+2）核函数是否存在临时内存，device信息怎么存储，内存怎么管理
+
+3）

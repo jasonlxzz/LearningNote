@@ -1,4 +1,4 @@
-# 算子分发
+# 算子分发[in torch]
 
 ## 算子注册
 
@@ -363,8 +363,6 @@ static struct PyModuleDef examplemodule = {
 PyMODINIT_FUNC PyInit_example(void) {
     return PyModule_Create(&examplemodule);
 }
-
-
 ```
 
 然后再提供一个`setup.py`
@@ -386,7 +384,6 @@ setup(
     description='Example C++ extension module',
     ext_modules=[example_module]
 )
-
 ```
 
 调用这个脚本可以自动帮你把需要的`so`编译出来。
@@ -411,14 +408,13 @@ python setup.py install
 
 利用`setuptools`即可快速定义模块和编译。
 
-有了这些背景知识后，再回过头来`torch/__init__.py`，猜测就是在该文件中将`conv2d`方法定义，或者绑定到`torch`模块。乍一看`__init__.py`文件其实也看不出什么东西，我这里是从底层往上看，这依赖于有个源码编译的`torch`工程，因为这部分代码都是自动生成的，源码中只提供了代码的模版。
+有了这些背景知识后，再回过头来看`torch/__init__.py`，猜测就是在该文件中将`conv2d`方法定义，或者绑定到`torch`模块。乍一看`__init__.py`文件其实也看不出什么东西，我这里是从底层往上看，这依赖于有个源码编译的`torch`工程，因为这部分代码都是自动生成的，源码中只提供了代码的模版。
 
 这部分的代码生成在目录`/pytorch/torch/csrc/autograd/generated`，
 
 搜索一下可以发现在`python_torch_functions_1.cpp`文件中，有关于卷积的代码
 
 ```cpp
-
 static PyObject * THPVariable_conv2d(PyObject* self_, PyObject* args, PyObject* kwargs)
 {
   HANDLE_TH_ERRORS
@@ -465,8 +461,6 @@ void gatherTorchFunctions_1(std::vector<PyMethodDef> &torch_functions) {
     torch_functions_shard,
     torch_functions_shard + num_functions);
 }
-
-
 ```
 
 关键的函数就是`at::conv2d_symint`，这个会函数会触发`Dispatcher`机制，最后调用底层实现（稍后会有解释细节）。先看上层的调用，`gatherTorchFunctions_1`函数，它会将所有的将当前文件列出来的所有`PyMethodDef`都进行收集到`torch_functions`中。继续查找调用`gatherTorchFunctions_1`的地方，发现调用发生在文件`torch\csrc\autograd\python_torch_functions_manual.cpp`
@@ -514,7 +508,7 @@ void gatherTorchFunctions(std::vector<PyMethodDef>& torch_functions) {
 }
 ```
 
-从上面的源码可以得知，torch.conv2d应该是和`initTorchFunctions`函数入参`module`模块的`_VariableFunctions`模块里面。继续查看`initTorchFunctions`调用的地方，可以看到调用发生在`torch\csrc\autograd\python_variable.cpp`
+从上面的源码可以得知，`torch.conv2d`应该是和`initTorchFunctions`函数入参`module`模块的`_VariableFunctions`模块里面。继续查看`initTorchFunctions`调用的地方，可以看到调用发生在`torch\csrc\autograd\python_variable.cpp`
 
 ```cpp
 bool THPVariable_initModule(PyObject* module) {
@@ -561,7 +555,7 @@ _C._VariableFunctions.conv2d is torch.conv2d
 #True
 ```
 
-接着看`torch.conv2d`是怎么和`_C.__VariableFunctionsClass.conv2d`或者`_C._VariableFunctions.conv2d`进行关联的。发生在`torch\__init__.py`文件中，
+接着看`torch.conv2d`是怎么和`_C.__VariableFunctionsClass.conv2d`或者`_C._VariableFunctions.conv2d`进行关联的。和刚开始猜想的一样，它确实发生在`torch\__init__.py`文件中，
 
 ```python
 for name in dir(_C._VariableFunctions):
@@ -591,10 +585,64 @@ for name in dir(_C._VariableFunctions):
 
 -> `conv2d_symint`
 
-继续看`conv2d_symint`调用里，这涉及前面的算子注册的知识，另外这部分的代码全都是在编译阶段自动生成的。
+继续看`conv2d_symint`调用里，这涉及前面的算子注册的知识，另外这部分的代码全都是在编译阶段自动生成的，这部分生成的代码在目录`build/aten/src/ATen/`，这个函数在文件`build/aten/src/ATen/ops/conv2d.h`
+
+```cpp
+namespace at {
+
+inline at::Tensor conv2d_symint(const at::Tensor & input, const at::Tensor & weight, const c10::optional<at::Tensor> & bias={}, c10::SymIntArrayRef stride=c10::SymInt(1), c10::SymIntArrayRef padding=c10::SymInt(0), c10::SymIntArrayRef dilation=c10::SymInt(1), c10::SymInt groups=1) {
+    return at::_ops::conv2d::call(input, weight, bias, stride, padding, dilation, groups);
+    }
+}
+```
+
+它会调用`at::_ops::conv2d::call`，函数声明在`build/aten/src/ATen/ops/conv2d.h`
+
+```cpp
+namespace at {
+namespace _ops {
 
 
+struct TORCH_API conv2d {
+  using schema = at::Tensor (const at::Tensor &, const at::Tensor &, const c10::optional<at::Tensor> &, c10::SymIntArrayRef, c10::SymIntArrayRef, c10::SymIntArrayRef, c10::SymInt);
+  using ptr_schema = schema*;
+  // See Note [static constexpr char* members for windows NVCC]
+  STATIC_CONSTEXPR_STR_INL_EXCEPT_WIN_CUDA(name, "aten::conv2d")
+  STATIC_CONSTEXPR_STR_INL_EXCEPT_WIN_CUDA(overload_name, "")
+  STATIC_CONSTEXPR_STR_INL_EXCEPT_WIN_CUDA(schema_str, "conv2d(Tensor input, Tensor weight, Tensor? bias=None, SymInt[2] stride=1, SymInt[2] padding=0, SymInt[2] dilation=1, SymInt groups=1) -> Tensor")
+  static at::Tensor call(const at::Tensor & input, const at::Tensor & weight, const c10::optional<at::Tensor> & bias, c10::SymIntArrayRef stride, c10::SymIntArrayRef padding, c10::SymIntArrayRef dilation, c10::SymInt groups);
+  static at::Tensor redispatch(c10::DispatchKeySet dispatchKeySet, const at::Tensor & input, const at::Tensor & weight, const c10::optional<at::Tensor> & bias, c10::SymIntArrayRef stride, c10::SymIntArrayRef padding, c10::SymIntArrayRef dilation, c10::SymInt
+ groups);
+        }; 
+    }
+}
+```
 
+函数定义在`build/aten/src/ATen/Operators_4.cpp`里面，
 
+```cpp
+namespace at { namespace _ops {
 
+STATIC_CONST_STR_OUT_OF_LINE_FOR_WIN_CUDA(conv2d, name, "aten::conv2d")
+STATIC_CONST_STR_OUT_OF_LINE_FOR_WIN_CUDA(conv2d, overload_name, "")
+STATIC_CONST_STR_OUT_OF_LINE_FOR_WIN_CUDA(conv2d, schema_str, "conv2d(Tensor input, Tensor weight, Tensor? bias=None, SymInt[2] stride=1, SymInt[2] padding=0, SymInt[2] dilation=1, SymInt groups=1) -> Tensor")
 
+// aten::conv2d(Tensor input, Tensor weight, Tensor? bias=None, SymInt[2] stride=1, SymInt[2] padding=0, SymInt[2] dilation=1, SymInt groups=1) -> Tensor
+static C10_NOINLINE c10::TypedOperatorHandle<conv2d::schema> create_conv2d_typed_handle() {
+  return c10::Dispatcher::singleton()
+      .findSchemaOrThrow(conv2d::name, conv2d::overload_name)
+      .typed<conv2d::schema>();
+}
+
+// aten::conv2d(Tensor input, Tensor weight, Tensor? bias=None, SymInt[2] stride=1, SymInt[2] padding=0, SymInt[2] dilation=1, SymInt groups=1) -> Tensor
+at::Tensor conv2d::call(const at::Tensor & input, const at::Tensor & weight, const c10::optional<at::Tensor> & bias, c10::SymIntArrayRef stride, c10::SymIntArrayRef padding, c10::SymIntArrayRef dilation, c10::SymInt groups) {
+
+    static auto op = create_conv2d_typed_handle();
+    return op.call(input, weight, bias, stride, padding, dilation, groups);
+}
+
+}
+}
+```
+
+此处看到了`TypedOperatorHandle`，和注册时的`TypedOperatorHandle`串联在一起了。
