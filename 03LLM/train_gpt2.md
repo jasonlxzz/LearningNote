@@ -6,11 +6,7 @@
    
    - 模型结构梳理
      
-     - gpt2
-     
-     - bert
-     
-     - llama系列
+     - gpt/gpt2/gpt3
    
    - 训练、验证、测试
    
@@ -149,11 +145,79 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 
 [gpt2](###gpt2) 论文有4种模型结构设置
 
-gpt3 官方有8种模型结构设置
+| Parameters | Layers | d_model | num_head |
+|:---------- | ------ | ------- | -------- |
+| 117M       | 12     | 768     | 12       |
+| 345M       | 24     | 1024    | 16       |
+| 762M       | 36     | 1280    | 20       |
+| 1542M      | 48     | 1600    | 25       |
+
+
+
+[gpt3](###gpt3) 官方有8种模型结构设置
+
+| Parameters | Layers | d_model | num_head | head_size | Batch Size | Learning Rate($10^{-4}$) |
+| ---------- | ------ | ------- | -------- | --------- | ---------- | ------------------------ |
+| 125M       | 12     | 768     | 12       | 64        | 0.5M       | 6.0                      |
+| 350M       | 24     | 1024    | 16       | 64        | 0.5M       | 3.0                      |
+| 760M       | 24     | 1536    | 16       | 96        | 0.5M       | 2.5                      |
+| 1.3B       | 24     | 2048    | 24       | 128       | 1M         | 2.0                      |
+| 2.7B       | 32     | 2560    | 32       | 80        | 1M         | 1.6                      |
+| 6.7B       | 32     | 4096    | 32       | 128       | 2M         | 1.2                      |
+| 13B        | 40     | 5140    | 40       | 128       | 2M         | 1.0                      |
+| 175B       | 96     | 12288   | 96       | 128       | 3.2M       | 0.6                      |
+
+其余设置：
+
+| 模型                                     | gpt2  | gpt3  |
+| -------------------------------------- | ----- | ----- |
+| max_seq_len                            | 1024  | 2048  |
+| vocab_size                             | 50257 | 50257 |
+| padded_vocab_size(for cuda accelerate) | 50304 | 50304 |
+
+
 
 ## 模型创建
 
-- 模型结构
+- 模型结构(权重)
+  
+  VP(padded_vocab_size)，C(d_model)， max_T(max_seq_len), L(Layers)  
+  
+  下方列出模型结构所需的所有预训练权重：
+  
+  - wte：输入embedding层，Vp * C
+  
+  - wpe:  输入位置编码层， maxT * C
+  
+  - ln1w：前置layernorm的权重，L * C
+  
+  - ln1b：前置layernorm的偏置，L * C
+  
+  - qkvw：Q/K/V 输入线性变换的权重， L * (3 * C) * C
+  
+  - qkvb：对应的偏置，L * (3 * C) 
+  
+  - attprojw：sdpa结束后，多个head 拼接在一起，再进行线性变换权重，L * C * C
+  
+  - attprojb：对应的偏置，L * C
+  
+  - ln2w：后置layernorm的权重，L * C
+  
+  - ln2b：后置layernorm的偏置，L * C
+  
+  - fcw：FFN的第一层 线性变换权重，C->4C, L * (4 * C) * C
+  
+  - fcb：对应偏置，L * (4 * C)
+  
+  - fcprojw：FFN的第二层线性变换权重，4C->C，L * C * (4 * C)
+  
+  - fcprojb：对应偏置，L * C
+  
+  - lnfw：最后输出的layernorm, C
+  
+  - lnfb: 对应偏置，C
+  
+  注：最后输出会有一个embedding，和输入embedding共享权重。
 
 - 内存分配
 
@@ -167,14 +231,14 @@ gpt3 官方有8种模型结构设置
 
 
 
+# 大模型加速技巧
 
+## 基本结构
 
+### layernorm
 
+常用于NLP，保证每个token的特征保持独立分布。输入N,C,H,W, 在CHW上进行归一化。
 
-   
-
-
-
-
+**注**：区别于batch norm，常用于图像处理，卷积CNN网络输出的C，是利用不同的滤波器得到。因此某一个通道可以看成是某一种特征，这类特征拥有旋转不变性，在N,H,W上进行归一化。
 
 
