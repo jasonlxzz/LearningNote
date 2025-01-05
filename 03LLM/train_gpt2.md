@@ -59,7 +59,7 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 
 # 大语言模型预训练
 
-## 模型结构
+## gpt系列
 
 ### gpt
 
@@ -67,7 +67,7 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 
 ### gpt2
 
-[论文地址](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), [开源代码]([GitHub - openai/gpt-2: Code for the paper "Language Models are Unsupervised Multitask Learners"](https://github.com/openai/gpt-2))
+[论文地址](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf), [开源代码](https://github.com/openai/gpt-2)
 
 #### 研究背景
 
@@ -152,8 +152,6 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 | 762M       | 36     | 1280    | 20       |
 | 1542M      | 48     | 1600    | 25       |
 
-
-
 [gpt3](###gpt3) 官方有8种模型结构设置
 
 | Parameters | Layers | d_model | num_head | head_size | Batch Size | Learning Rate($10^{-4}$) |
@@ -175,15 +173,13 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 | vocab_size                             | 50257 | 50257 |
 | padded_vocab_size(for cuda accelerate) | 50304 | 50304 |
 
-
-
 ## 模型创建
 
-- 模型结构(权重)
+- 模型权重
   
   VP(padded_vocab_size)，C(d_model)， max_T(max_seq_len), L(Layers)  
   
-  下方列出模型结构所需的所有预训练权重：
+  下方列出模型结构所需的所有预训练权重[16个]：
   
   - wte：输入embedding层，Vp * C
   
@@ -219,17 +215,90 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
   
   注：最后输出会有一个embedding，和输入embedding共享权重。
 
+- 模型激活(每层输出，21个，考虑残差连接的内存复用，element-wise)
+  
+  - encoded, embedding层输出 (B,T,C)
+  
+  - ln1，pre layernorm的输出 （L, B, T, C），recompute无需申请
+  
+  - ln1_mean，pre layernorm的均值（L, B, T）
+  
+  - ln1_rstd,  pre layernorm的方差 （L, B, T）
+  
+  - atty，注意力施加在V上的结果 (L, B, T, C)
+  
+  - att，注意力权重 (L, B, NH, T, T) ； 开启cudnn大小为 (L, B, NH, T)
+  
+  - residual2， 残差相加结果，(L, B, T, C)
+  
+  - ln2， post layernorm的输出，(L, B, T, C)，recompute无需申请
+  
+  - ln2_mean，post layernorm的均值，(L, B, T)
+  
+  - ln2_rstd，post layernorm的方差，(L, B, T)
+  
+  - fch，FFN第一个线性变换的输出， (L, B, T, 4*C)
+  
+  - ftch_gelu， FFN第一个线性变换+gelu输出，  (L, B, T, 4*C)，recompute无需申请
+  
+  - residual3，残差相加结果，(L, B, T, C)
+  
+  - lnf， 最后的layernorm输出， (B, T, C)
+  
+  - lnf_mean， 最后的layernorm均值， (B, T)
+  
+  - lnf_rstd， 最后的layernorm方差， (B, T)
+  
+  - losses, 损失函数输出 (B, T)
+  
+  - qkvr， 
+  
+  - output， 最终输出
+  
+  - scratch_bt4c，
+  
+  - scarach_btc，
+
 - 内存分配
+  
+  - 权重：cudaMalloc一块大内存，然后通过每个权重大小在大内存上进行偏移。
+  
+  - 梯度：与权重大小相同，偏移方式与权重相同
+  
+  - 激活activation(每层的输出)：存在复用以及一些特殊buffer，后续补充理解
+  
+  - 优化器：使用的AdamW，一阶距+二阶距+master weight。三种权重，多卡训练时可以分配到不同的卡上。
 
 ## 权重初始化
 
+按照上面列出的，总共有16种类型权重，总共9weight+7bias。bias初始化为0.
+
+- wte/wpe只会初始化一次，服从正态分布$W \sim \mathcal{N}\left(0, 0.02 \right)$
+
+- 所有的layernorm weight 都初始化为1（总共有三个，只会初始化一次）
+
+- wqkv/fcprojw初始化为： $W \sim \mathcal{N}\left(0, 0.02 \right)$
+
+- attnprojw/fcprojw初始化为: $W \sim \mathcal{N}\left(0, 0.02 \cdot \frac{1}{\sqrt{N}}\right)$
+
+这里的N=2L，一个L存在两个残差层，论文里面N就是残差层的个数。
+
+另外正态分布会有一个随机种子，torch的随机种子如下：
+
+```python
+# 设置随机种子
+torch.manual_seed(42)
+```
+
+cpu权重内存初始化后拷贝到gpu权重内存，然后释放cpu权重内存。
+
 ## 数据集加载
+
+
 
 ## 模型训练
 
 ## 模型验证测试
-
-
 
 # 大模型加速技巧
 
@@ -240,5 +309,7 @@ root@iZbp16byi4f3fvh4g6jktbZ:~/llm.c# tree -L 1
 常用于NLP，保证每个token的特征保持独立分布。输入N,C,H,W, 在CHW上进行归一化。
 
 **注**：区别于batch norm，常用于图像处理，卷积CNN网络输出的C，是利用不同的滤波器得到。因此某一个通道可以看成是某一种特征，这类特征拥有旋转不变性，在N,H,W上进行归一化。
+
+## Zero Redundancy Optimizer stage
 
 
